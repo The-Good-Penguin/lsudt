@@ -17,6 +17,7 @@ setup(
     url = 'https://github.com/The-Good-Penguin/lsudt',
     packages = ['lsudt'],
     install_requires = ['pyudev'],
+    long_description_content_type='text/markdown',
     long_description = read('README.md'),
     python_requires='>=3.9.5',
     entry_points={
@@ -26,7 +27,7 @@ setup(
     },
     classifiers=[
         'Development Status :: 3 - Alpha',
-        'Environment::Console',
+        'Environment :: Console',
         'Intended Audience :: Developers',
         'Intended Audience :: End Users/Desktop',
         'Intended Audience :: Information Technology',
