@@ -329,7 +329,7 @@ def init_argparse() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="View connected USB devices and device nodes"
     )
-    parser.add_argument("--version", action="version", version="%(prog)s 1.0")
+    parser.add_argument("--version", action="version", version="%(prog)s 0.1")
     parser.add_argument(
         "--show-devusb",
         "-u",
