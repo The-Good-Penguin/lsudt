@@ -19,7 +19,7 @@ setup(
     install_requires = ['pyudev'],
     long_description_content_type='text/markdown',
     long_description = read('README.md'),
-    python_requires='>=3.9.5',
+    python_requires='>=3.6',
     entry_points={
         'console_scripts': [
             'lsudt = lsudt.lsudt:main'
