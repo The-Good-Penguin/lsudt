@@ -113,3 +113,98 @@ optional arguments:
   --udev-idpath ID_PATH, -i ID_PATH
                         limit output to devices with a parent starting with given idpath
 ```
+## Labels
+
+The USB tree can be better visualised by using labels. A user may create a
+configuration file that assigns text labels to specific devices.
+
+For example consider the following USB tree:
+
+```bash
+$ lsudt -p 1-10
+Port 1-10: Hub (2109:2813 / 1-10)
+    Port 2: Hub (45b:209 / 1-10.2)
+        Port 3: Device (67b:2303 / 1-10.2.3)
+           /dev/ttyUSB0
+
+        Port 4: Hub (1a40:101 / 1-10.2.4)
+            Port 3: Device (67b:2303 / 1-10.2.4.3)
+               /dev/ttyUSB1
+
+            Port 4: Device (bda:8152 / 1-10.2.4.4)
+               Net: enx00e04c360033
+```
+
+The same tree can be better visualised when using labels:
+
+```bash
+$ ./lsudt.py -p 1-10
+Port 1-10: Hub (2109:2813 / 1-10)
+    Port 2: Hub used for Raspberry Pi (45b:209 / 1-10.2)
+        Port 3: Raspberry Pi UART (67b:2303 / 1-10.2.3)
+           /dev/ttyUSB0
+
+        Port 4: Additional hub (1a40:101 / 1-10.2.4)
+            Port 3: USB relay (Pi power control) (67b:2303 / 1-10.2.4.3)
+               /dev/ttyUSB1
+
+            Port 4: Hub built in Ethernet (connected to Pi) (bda:8152 / 1-10.2.4.4)
+               Net: enx00e04c360033
+```
+
+The configuration file for these labels is shown below:
+
+```bash
+segments:
+  -
+    identifier: raspberry_pi
+    label: Hub used for Raspberry Pi
+    ports:
+      - port: 1
+        label: UART
+      - port: 3
+        label: Raspberry Pi UART
+      - port: 4
+        label: Additional hub
+      - port: 4.3
+        label: USB relay (Pi power control)
+      - port: 4.4
+        label: Hub built in Ethernet (connected to Pi)
+
+mappings:
+  -
+    identifier: raspberry_pi
+    port: 1-10.2
+```
+
+A segment represents a fixed portion of the USB topology and consists
+of an identifier, label and set of labels for child ports.
+
+The segment is accompanied with a mapping that describes where the
+segment lives in the overall USB tree. In this way, the port path of
+the ports in a segment are relative to the port path in the mapping.
+
+This is useful as the segment can represent a fixed set of devices
+(e.g. a board in a board farm) and the mapping describes where it is
+(e.g. making it easier to move a board in a board farm).
+
+The configuration can be split across any number of files. lsudt will
+scan for any files ending with the .yml suffix in the ~/.lsudt/ directory.
+
+Finally a segment identifier can be used to filter the output of lsudt,
+e.g.
+
+```bash
+$ ./lsudt.py -b raspberry_pi
+Port 2: Hub used for Raspberry Pi (45b:209 / 1-10.2)
+    Port 3: Raspberry Pi UART (67b:2303 / 1-10.2.3)
+       /dev/ttyUSB0
+
+    Port 4: Additional hub (1a40:101 / 1-10.2.4)
+        Port 3: USB relay (Pi power control) (67b:2303 / 1-10.2.4.3)
+           /dev/ttyUSB1
+
+        Port 4: Hub built in Ethernet (connected to Pi) (bda:8152 / 1-10.2.4.4)
+           Net: enx00e04c360033
+
+```
