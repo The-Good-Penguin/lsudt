@@ -106,6 +106,8 @@ optional arguments:
                         limit output to devices contained within a path starting with /sys/devices/
   --port-path PORT_PATH, -p PORT_PATH
                         limit output to devices downstream of a particular port path
+  --label LABEL, -b LABEL
+                        limit output to devices downstream of a particular label
   --udev-tag TAG, -t TAG
                         limit output to devices with udev tag
   --udev-idpath ID_PATH, -i ID_PATH
