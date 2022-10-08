@@ -113,6 +113,22 @@ optional arguments:
   --udev-idpath ID_PATH, -i ID_PATH
                         limit output to devices with a parent starting with given idpath
 ```
+## Installation
+
+The easiest way to install lsudt is to use pip, as follows:
+
+```bash
+$ pip3 install lsudt
+```
+
+Alternatively you can clone the Github repo and install it as follows:
+
+```bash
+$ git clone https://github.com/The-Good-Penguin/lsudt.git
+$ cd lsudt
+$ pip3 install .
+```
+
 ## Labels
 
 The USB tree can be better visualised by using labels. A user may create a
