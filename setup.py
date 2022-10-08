@@ -8,7 +8,7 @@ def read(fname):
 
 setup(
     name = 'lsudt',
-    version = '0.1',
+    version = '0.2.1',
     author = 'Andrew Murray',
     author_email = 'amurray@thegoodpenguin.co.uk',
     description = 'Utility to list USB devices including associated Linux devices',
