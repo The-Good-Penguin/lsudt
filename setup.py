@@ -16,7 +16,7 @@ setup(
     keywords = 'usb list devices lsusb udev pyudev',
     url = 'https://github.com/The-Good-Penguin/lsudt',
     packages = ['lsudt'],
-    install_requires = ['pyudev'],
+    install_requires = ['pyudev', 'pyyaml'],
     long_description_content_type='text/markdown',
     long_description = read('README.md'),
     python_requires='>=3.6',
