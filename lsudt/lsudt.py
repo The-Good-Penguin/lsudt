@@ -5,7 +5,9 @@
 import argparse
 import os
 import re
+import pathlib
 import pyudev
+import yaml
 
 
 class USBDevice:
@@ -256,6 +258,71 @@ def showtree(usb_devices, space, args) -> None:
         show(usb_device, space, args)
 
 
+def parse_one_configuration_file(path: str):
+    """
+    Read a yml config files and obtain segments and mappings
+    """
+    try:
+        with open(path, "r") as config_file:
+            i = yaml.safe_load(config_file)
+            if i is None:
+                return
+            if i.get("mappings"):
+                for mapping in i["mappings"]:
+                    if (
+                        mapping.get("identifier") is not None
+                        and mapping.get("port") is not None
+                    ):
+                        mappings[mapping["identifier"]] = mapping["port"]
+            if i.get("segments"):
+                for mapping in i["segments"]:
+                    segments.append(mapping)
+    except (OSError, yaml.scanner.ScannerError):
+        print(f"Unable to parse {path}")
+
+
+def read_configuration():
+    """
+    Read yml config files to obtain segments and mappings
+    """
+    # Find home path for configuration
+    home = pathlib.Path.home()
+    settings_path = os.path.join(home, ".lsudt")
+
+    if not os.path.isdir(settings_path):
+        return
+
+    for config in os.listdir(settings_path):
+        if config.endswith(".yml"):
+            parse_one_configuration_file(f"{settings_path}/{config}")
+
+
+def load_port_labels():
+    """
+    Use the users segments and mappings to construct a map between port paths and user friendly
+    labels
+    """
+    read_configuration()
+
+    # Extract labels and port paths from lsudt files
+    for segment in segments:
+        # The segment is part of a USB topology, let's lookup the mappings
+        # to find where in the USB tree it lives
+        root_path = mappings.get(segment.get("identifier"))
+        if root_path is None:
+            continue
+
+        # Add port label for the segment
+        if segment.get("label") is not None:
+            port_labels[root_path] = segment["label"]
+
+        # Add port labels for the ports
+        for port in segment["ports"]:
+            if port.get("port") is not None and port.get("label") is not None:
+                port_path = f"{root_path}.{port['port']}"
+                port_labels[port_path] = port["label"]
+
+
 def show(usb_device, space, args) -> None:
     """
     Display the USB tree for the given USB device
@@ -284,6 +351,8 @@ def show(usb_device, space, args) -> None:
     )
 
     # Display device info
+    if usb_device.port_path in port_labels:
+        device_type = port_labels[usb_device.port_path]
     if usb_device.id_vendor is not None:
         print(
             f"{space}Port {port}: {device_type} ({usb_info} / {usb_device.port_path})"
@@ -377,6 +446,13 @@ def init_argparse() -> argparse.ArgumentParser:
         help="limit output to devices downstream of a particular port path",
     )
     parser.add_argument(
+        "--label",
+        "-b",
+        action="store",
+        dest="label",
+        help="limit output to devices downstream of a particular label",
+    )
+    parser.add_argument(
         "--udev-tag",
         "-t",
         action="store",
@@ -397,6 +473,15 @@ def init_argparse() -> argparse.ArgumentParser:
 # Flat list of all USB devices discovered
 usb_devices_list = []
 
+# Map between ports and their labels
+port_labels = {}
+
+# List of 'segment' objects representing a labelled section of USB tree
+segments = []
+
+# Mappings between segments and their port path
+mappings = {}
+
 
 def main() -> None:
     """
@@ -404,6 +489,15 @@ def main() -> None:
     """
     parser = init_argparse()
     args = parser.parse_args()
+
+    # Read port labels from configuration files
+    load_port_labels()
+
+    # Limit by label instead of port path
+    if args.label is not None:
+        port_path = mappings.get(args.label)
+        if port_path is not None:
+            args.port_path = port_path
 
     # Scan for devices and construct a tree
     scan_usb_tree(args)
