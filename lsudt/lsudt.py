@@ -333,17 +333,19 @@ def load_port_labels():
             port_paths = [root_path["port"]]
 
         for port_path in port_paths:
-
             # Add port label for the segment
             if segment.get("label") is not None:
                 port_labels[port_path] = segment["label"]
 
-            # Add port labels for the ports
+            # Add port labels and envs for the ports
             for port in segment["ports"]:
                 if port.get("port") is not None and port.get("label") is not None:
-                    full_port_path = f"{port_path}.{port['port']}"
-                    port_labels[full_port_path] = port["label"]
-
+                    full_port_path = f"{root_path}.{port['port']}"
+                    port_labels[full_port_path] = {}
+                    if port.get("label") is not None:
+                        port_labels[full_port_path]["label"] = port["label"]
+                    if port.get("env"):
+                        port_labels[port_path]["env"] = port["env"]
 
 def show(usb_device, space, args) -> None:
     """
@@ -374,7 +376,7 @@ def show(usb_device, space, args) -> None:
 
     # Display device info
     if usb_device.port_path in port_labels:
-        device_type = port_labels[usb_device.port_path]
+        device_type = port_labels[usb_device.port_path]["label"]
     if usb_device.id_vendor is not None:
         print(
             f"{space}Port {port}: {device_type} ({usb_info} / {usb_device.port_path})"

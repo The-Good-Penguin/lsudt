@@ -178,12 +178,15 @@ segments:
     ports:
       - port: 1
         label: UART
+        env: UART
       - port: 3
         label: Raspberry Pi UART
+        env: UART
       - port: 4
         label: Additional hub
       - port: 4.3
         label: USB relay (Pi power control)
+        env: POWER
       - port: 4.4
         label: Hub built in Ethernet (connected to Pi)
 
