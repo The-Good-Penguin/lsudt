@@ -8,7 +8,7 @@ import re
 import pathlib
 import pyudev
 import yaml
-
+import bisect
 
 class USBDevice:
     """
@@ -327,56 +327,94 @@ def load_port_labels():
             continue
 
         port_paths = []
+        accessor = ""
         if "idpath" in root_path:
             port_paths = determine_root_ports_from_id_path(root_path["idpath"])
+            accessor = "idpath"
         elif "port" in root_path:
             port_paths = [root_path["port"]]
+            accessor = "port"
 
         for port_path in port_paths:
             # Add port label for the segment
             if segment.get("label") is not None:
+                port_labels[port_path] = {}
                 port_labels[port_path] = segment["label"]
 
             # Add port labels and envs for the ports
             for port in segment["ports"]:
                 if port.get("port") is not None and port.get("label") is not None:
-                    full_port_path = f"{root_path}.{port['port']}"
+                    full_port_path = f"{root_path[accessor]}.{port['port']}"
                     port_labels[full_port_path] = {}
                     if port.get("label") is not None:
                         port_labels[full_port_path]["label"] = port["label"]
-                    if port.get("env"):
-                        port_labels[port_path]["env"] = port["env"]
+                    if port.get("env") is not None:
+                        port_labels[full_port_path]["env"] = port["env"]
 
-def show(usb_device, space, args) -> None:
+def check_args_for_print(usb_device, args) -> bool:
     """
-    Display the USB tree for the given USB device
+    Checks args and acts accordingly for borwsing
+    device tree
     """
-
     # Only show empty hubs if required
     if not args.show_empty_hubs:
         if len(usb_device.children) == 0 and len(usb_device.devices) == 0:
-            return
+            return True
 
     # When filtering by id_path, ignore anything that doesn't match
     if args.id_path is not None:
         if not does_id_path_match(args.id_path, usb_device):
-            return
+            return True
 
+def add_uniq(list_in : list, new_val):
+    """
+    adds a value to the provided list but only
+    if it isn't already present
+    """
+    if new_val in list_in:
+        return list_in
+
+    bisect.insort(list_in, new_val)
+    return list_in
+
+def filter(device, args) -> str:
+    """
+    Filter out /dev/bus/usb devices if needed
+    """
+    if (
+        not args.show_devusb
+        and device.devname is not None
+        and device.devname.startswith("/dev/bus/usb")
+        ):
+            return ""
+
+    devname = device.devname if device.devname is not None else f"Net: {device.eth}"
+    return devname
+
+
+def print_port(usb_device, space):
+    """
+    prints port information i.e.
+        Port 3-2: hub used for things (1a40:101 / 3-2)
+    """
     # Determine the port number from the port path
     ports = usb_device.port_path.rsplit(".", 1)
     port = next(reversed(ports))
-
     # Create labels
     device_type = "Hub" if usb_device.device_class == 9 else "Device"
+
+    # Display device info
+    if usb_device.port_path in port_labels:
+        if port_labels.get(usb_device.port_path):
+            if type(port_labels[usb_device.port_path]) is str:
+                device_type = port_labels[usb_device.port_path]
+            else:
+                device_type = port_labels[usb_device.port_path]['label']
     usb_info = (
         ""
         if usb_device.id_vendor is None
         else f"{usb_device.id_vendor:x}:{usb_device.id_product:x}"
     )
-
-    # Display device info
-    if usb_device.port_path in port_labels:
-        device_type = port_labels[usb_device.port_path]["label"]
     if usb_device.id_vendor is not None:
         print(
             f"{space}Port {port}: {device_type} ({usb_info} / {usb_device.port_path})"
@@ -384,35 +422,113 @@ def show(usb_device, space, args) -> None:
     else:
         print(f"{space}Port {port}: ({usb_device.port_path})")
 
-    space_added = False
 
+def print_devices_of_port(device, devname, args, space) -> bool:
+    """
+    prints sub port information, i.e.
+            Port 2: things foo (403:6001 / 3-2.2)
+    """
+    space_added = False
+    id_path = (
+        ""
+        if device.id_path is None or args.show_idpath is False
+        else f" ({device.id_path})"
+    )
+    print(f"{space}   {devname}{id_path}")
+    if args.show_device_links:
+        if device.devlinks is not None:
+            device_links = device.devlinks.split(" ")
+            for link in device_links:
+                print(f"{space}   : {link}")
+            print("")
+            space_added = True
+    return space_added
+
+def build_env_dict(devname, port_path):
+    """
+    This function builds env_dict for printing
+    """
+    global envs_dict
+
+    env = None
+    options = ""
+    identifier = ""
+    accessor = ""
+    env_path = port_path
+
+    for id in mappings:
+        if "port" in mappings[id]:
+            accessor = "port"
+        elif "idpath" in mappings[id]:
+            accessor = "idpath"
+
+        to_compare = mappings[id][accessor]
+        root_ports = determine_root_ports_from_id_path(to_compare)
+        if len(root_ports) == 1:
+           to_compare =  root_ports[0]
+
+        if to_compare in port_path:
+            env_path = mappings[id][accessor]
+            identifier = id
+            break
+
+    for path in port_labels:
+        if env_path in path:
+            if "env" in port_labels[path]:
+                env = port_labels[path]["env"].split(',')
+                if len(env) == 2:
+                    env,options = env[0],env[1]
+                else:
+                    env = env[0]
+
+    if env is None:
+        return
+
+    if devname is not None:
+        if not envs_dict.get(identifier):
+            envs_dict[identifier] = {env : list()}
+        if not envs_dict[identifier].get(env):
+            envs_dict[identifier] = {env : list()}
+
+        # Check for device prefix
+        if options is not None:
+            basename = devname.split('/')[-1]
+            if basename[0:len(options)] == options:
+                envs_dict[identifier][env] = add_uniq(envs_dict[identifier][env], devname)
+        else:
+            envs_dict[identifier][env] = add_uniq(envs_dict[identifier][env], devname)
+
+def show(usb_device, space, args) -> None:
+    """
+    Display the USB tree for the given USB device
+    """
+
+    if check_args_for_print(usb_device, args):
+        return
+
+    if not args.extract_env:
+        print_port(usb_device, space)
+
+    space_added = False
     # Iterate through the devices associated with this USB device
     for device in usb_device.devices:
-        # Filter out /dev/bus/usb devices if needed
-        if (
-            not args.show_devusb
-            and device.devname is not None
-            and device.devname.startswith("/dev/bus/usb")
-        ):
+        devname = filter(device, args)
+        if len(devname) == 0:
             continue
-        id_path = (
-            ""
-            if device.id_path is None or args.show_idpath is False
-            else f" ({device.id_path})"
-        )
-        devname = device.devname if device.devname is not None else f"Net: {device.eth}"
-        print(f"{space}   {devname}{id_path}")
-        if args.show_device_links:
-            if device.devlinks is not None:
-                device_links = device.devlinks.split(" ")
-                for link in device_links:
-                    print(f"{space}   : {link}")
-                print("")
-                space_added = True
+
+        if not args.extract_env:
+            space_added = print_devices_of_port(device, devname, args, space)
+        else:
+            build_env_dict(devname, usb_device.port_path)
+
+        if f"{usb_device.port_path}.0" in port_labels:
+            build_env_dict(devname, f"{usb_device.port_path}.0")
+
     if len(usb_device.children) != 0:
         showtree(usb_device.children, space + "    ", args)
     elif space_added is False:
-        print("")
+        if not args.extract_env:
+            print("")
 
 
 def init_argparse() -> argparse.ArgumentParser:
@@ -490,9 +606,42 @@ def init_argparse() -> argparse.ArgumentParser:
         dest="id_path",
         help="limit output to devices with a parent starting with given idpath",
     )
+    parser.add_argument(
+        "--extract-env",
+        "-x",
+        action="store_true",
+        dest="extract_env",
+        help="print env labels as name/value pairs to stdout"
+    )
 
     return parser
 
+
+def fix_env_label(label : str):
+    """
+    Fixes the generated environment label, replacing '-'s with '_'s
+    """
+    return str(label).replace("-", "_").replace(" ", "_").upper()
+
+
+def generate_and_print_env_strings():
+    """
+    prints the name/value pairs to stdout
+    """
+    label = ""
+    strings = ""
+    for id in envs_dict:
+        label = fix_env_label(id)
+
+        if len(label) == 0:
+            continue
+        for env in envs_dict[id]:
+                counter = 0
+                for dev in envs_dict[id][env]:
+                    strings += (f"{label}_{env}{counter}={dev} ")
+                    counter+=1
+
+    print(strings)
 
 # Flat list of all USB devices discovered
 usb_devices_list = []
@@ -506,6 +655,8 @@ segments = []
 # Mappings between segments and their port path
 mappings = {}
 
+# Environment var name against a set of devices
+envs_dict = {}
 
 def main() -> None:
     """
@@ -547,6 +698,10 @@ def main() -> None:
             # Render from roots
             if device.parent is None:
                 show(device, "", args)
+
+    if args.extract_env is True:
+        if len(envs_dict) > 0:
+            generate_and_print_env_strings()
 
 
 if __name__ == "__main__":
