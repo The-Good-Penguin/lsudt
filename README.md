@@ -227,3 +227,11 @@ Port 2: Hub used for Raspberry Pi (45b:209 / 1-10.2)
            Net: enx00e04c360033
 
 ```
+
+## Contributing
+
+We welcome any feedback, bug reports, feature requests and pull requests. There
+is no mailing list associated with this project - please contribute via the GitHub
+Issues / Pull requests functionality.
+
+Please run pylint and black on any code contributions.
