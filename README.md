@@ -190,7 +190,8 @@ segments:
 mappings:
   -
     identifier: raspberry_pi
-    port: 1-10.2
+    #port: 1-10.2
+    idpath: pci-0000:00:14.0-usb-0:5
 ```
 
 A segment represents a fixed portion of the USB topology and consists
@@ -199,6 +200,8 @@ of an identifier, label and set of labels for child ports.
 The segment is accompanied with a mapping that describes where the
 segment lives in the overall USB tree. In this way, the port path of
 the ports in a segment are relative to the port path in the mapping.
+In addition to a port mapping, segements can be associated with part
+of a tree via an idpath as shown in the above example.
 
 This is useful as the segment can represent a fixed set of devices
 (e.g. a board in a board farm) and the mapping describes where it is

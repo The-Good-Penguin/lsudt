@@ -269,11 +269,13 @@ def parse_one_configuration_file(path: str):
                 return
             if i.get("mappings"):
                 for mapping in i["mappings"]:
-                    if (
-                        mapping.get("identifier") is not None
-                        and mapping.get("port") is not None
-                    ):
-                        mappings[mapping["identifier"]] = mapping["port"]
+                    if mapping.get("identifier") is not None:
+                        if mapping.get("port") is not None:
+                            mappings[mapping["identifier"]] = {"port": mapping["port"]}
+                        elif mapping.get("idpath") is not None:
+                            mappings[mapping["identifier"]] = {
+                                "idpath": mapping["idpath"]
+                            }
             if i.get("segments"):
                 for mapping in i["segments"]:
                     segments.append(mapping)
@@ -297,13 +299,25 @@ def read_configuration():
             parse_one_configuration_file(f"{settings_path}/{config}")
 
 
+def determine_root_ports_from_id_path(id_path: str):
+    """
+    Given an id_path (e.g. pci-0000:00:14.0-usb-0:5) get the current
+    port numbers (e.g. 1-5, 2-5) associated with it
+    """
+    ports = []
+    for usb_device in usb_devices_list:
+        for linux_device in usb_device.devices:
+            if linux_device.id_path is not None and linux_device.id_path == id_path:
+                ports.append(usb_device.port_path)
+
+    return ports
+
+
 def load_port_labels():
     """
     Use the users segments and mappings to construct a map between port paths and user friendly
     labels
     """
-    read_configuration()
-
     # Extract labels and port paths from lsudt files
     for segment in segments:
         # The segment is part of a USB topology, let's lookup the mappings
@@ -312,15 +326,23 @@ def load_port_labels():
         if root_path is None:
             continue
 
-        # Add port label for the segment
-        if segment.get("label") is not None:
-            port_labels[root_path] = segment["label"]
+        port_paths = []
+        if "idpath" in root_path:
+            port_paths = determine_root_ports_from_id_path(root_path["idpath"])
+        elif "port" in root_path:
+            port_paths = [root_path["port"]]
 
-        # Add port labels for the ports
-        for port in segment["ports"]:
-            if port.get("port") is not None and port.get("label") is not None:
-                port_path = f"{root_path}.{port['port']}"
-                port_labels[port_path] = port["label"]
+        for port_path in port_paths:
+
+            # Add port label for the segment
+            if segment.get("label") is not None:
+                port_labels[port_path] = segment["label"]
+
+            # Add port labels for the ports
+            for port in segment["ports"]:
+                if port.get("port") is not None and port.get("label") is not None:
+                    port_path = f"{port_path}.{port['port']}"
+                    port_labels[port_path] = port["label"]
 
 
 def show(usb_device, space, args) -> None:
@@ -490,17 +512,24 @@ def main() -> None:
     parser = init_argparse()
     args = parser.parse_args()
 
-    # Read port labels from configuration files
-    load_port_labels()
+    # Read config
+    read_configuration()
 
     # Limit by label instead of port path
     if args.label is not None:
         port_path = mappings.get(args.label)
         if port_path is not None:
-            args.port_path = port_path
+            if "port" in port_path:
+                args.port_path = port_path["port"]
+            if "idpath" in port_path:
+                args.id_path = port_path["idpath"]
 
     # Scan for devices and construct a tree
     scan_usb_tree(args)
+
+    # Read port labels from configuration files
+    # (This must come after a scan as idpath to port path lookup)
+    load_port_labels()
 
     # Dislay the tree
     for device in usb_devices_list:
