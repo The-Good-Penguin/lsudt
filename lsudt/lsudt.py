@@ -341,8 +341,8 @@ def load_port_labels():
             # Add port labels for the ports
             for port in segment["ports"]:
                 if port.get("port") is not None and port.get("label") is not None:
-                    port_path = f"{port_path}.{port['port']}"
-                    port_labels[port_path] = port["label"]
+                    full_port_path = f"{port_path}.{port['port']}"
+                    port_labels[full_port_path] = port["label"]
 
 
 def show(usb_device, space, args) -> None:
