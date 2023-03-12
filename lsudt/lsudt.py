@@ -531,12 +531,20 @@ def main() -> None:
     # (This must come after a scan as idpath to port path lookup)
     load_port_labels()
 
-    # Dislay the tree
-    for device in usb_devices_list:
+    # When filtering by ID path show tree starting with a USB device starting
+    # with the ID path
+    if args.id_path is not None:
+        for device in usb_devices_list:
+            for linux_device in device.devices:
+                if linux_device.id_path == args.id_path:
+                    show(device, "", args)
+    # Otherwise display from the top of all known USB trees
+    else:
+        for device in usb_devices_list:
 
-        # Render from roots
-        if device.parent is None:
-            show(device, "", args)
+            # Render from roots
+            if device.parent is None:
+                show(device, "", args)
 
 
 if __name__ == "__main__":
