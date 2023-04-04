@@ -170,7 +170,7 @@ Port 1-10: Hub (2109:2813 / 1-10)
 
 The configuration file for these labels is shown below:
 
-```bash
+```yml
 segments:
   -
     identifier: raspberry_pi
@@ -197,8 +197,60 @@ mappings:
     idpath: pci-0000:00:14.0-usb-0:5
 ```
 
+## Envs
+
+`envs` are the method by which a labelled port can have a generated environment variable that 
+bears the path to its node i.e. /dev/sda1
+
+Using the above raspberry pi example
+``` yml
+      - port: 3
+        label: Raspberry Pi UART
+        env: UART
+```
+
+This will generate a string in the form of `RASPBERRY_PI_UART0=/dev/foo`. This is based on the top 
+level identifier *(raspberry_pi)* which is capitalised and, if necessary, converts '-' and ' ' to '_'. 
+The `env` label given in env. The final number is the to differentiate several devices on the same hub
+e.g. /dev/sda /dev/sda1 /dev/sda2 will produce *_DISK0, *_DISK1, *_DISK2 respectively. 
+
+This name/value string can then be parsed however the user sees fit. For example:
+``` bash
+$ eval `lsudt -x -b raspberry_pi`
+$ minicom -D ${RASPBERRY_PI_UART0}
+```
+
+_Options_ may also be applied to the env part of a yml. For example:
+
+``` yml
+   env: DISK,sd
+```
+
+This Will ensure that only devices beginning with 'sd' are picked up. so `/dev/sg1` will be dropped but `/dev/sda1` 
+will be kept.
+
+Further to this it is guaranteed that all block devices will always be in 
+alphabetical order in relation to their env enumeration. So in the case of:
+```bash
+$ ls /dev/sda*
+   /dev/sda
+   /dev/sda1
+   /dev/sda2
+   /dev/sdb
+```
+the provided strings will _always_ be in order:
+```bash
+$ lsudt -x -b my_device
+   MY_DEVICE_DISK0=/dev/sda
+   MY_DEVICE_DISK1=/dev/sda1
+   MY_DEVICE_DISK2=/dev/sda2
+   MY_DEVICE_DISK3=/dev/sdb
+```
+
+## Segments
+
 A segment represents a fixed portion of the USB topology and consists
-of an identifier, label and set of labels for child ports.
+of an identifier, label and set of labels and/or envs for child ports.
 
 The segment is accompanied with a mapping that describes where the
 segment lives in the overall USB tree. In this way, the port path of
