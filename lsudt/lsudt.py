@@ -6,9 +6,12 @@ import argparse
 import os
 import re
 import pathlib
+import sys
+import bisect
+import errno
+import time
 import pyudev
 import yaml
-import bisect
 
 class USBDevice:
     """
@@ -615,6 +618,21 @@ def init_argparse() -> argparse.ArgumentParser:
         dest="extract_env",
         help="print env labels as name/value pairs to stdout"
     )
+    parser.add_argument(
+        "--wait-for-env",
+        "-w",
+        nargs='+',
+        action="store",
+        dest="wait_for_env",
+        help="wait for the supplied environment variable to become available"
+    )
+    parser.add_argument(
+        "--timeout",
+        "-o",
+        action="store",
+        dest="wait_timeout",
+        help="Maximum time in seconds we should wait for a node to become available",
+    )
 
     return parser
 
@@ -626,13 +644,15 @@ def fix_env_label(label : str):
     return str(label).replace("-", "_").replace(" ", "_").upper()
 
 
-def generate_and_print_env_strings():
+def generate_env_strings() -> list:
     """
-    prints the name/value pairs to stdout
+    Generates name=value strings to be printed to stdout
     """
     label = ""
-    strings = ""
-    for id in envs_dict:
+    global env_strings
+
+    env_strings = list()
+    for id in envs_dict.keys():
         label = fix_env_label(id)
 
         if len(label) == 0:
@@ -640,10 +660,74 @@ def generate_and_print_env_strings():
         for env in envs_dict[id]:
                 counter = 0
                 for dev in envs_dict[id][env]:
-                    strings += (f"{label}_{env}_{counter}={dev} ")
+                    env_strings.append(f"{label}_{env}_{counter}={dev} ")
                     counter+=1
 
-    print(strings)
+
+def are_nodes_missing(envs_to_check : list, env_strings : list) -> bool:
+    """
+    checks the generated env strings if the requested environemnt
+    variable is present
+    """
+
+    # we only care about the envs name
+    stripped_envs = []
+    for e_s in env_strings:
+        stripped = e_s.split("=")[0]
+        stripped_envs.append(stripped)
+
+    if all(i in stripped_envs for i in envs_to_check):
+        # all of the requested envs are present
+        return False
+    else:
+        # we're missing one or more
+        return True
+
+
+def wait_for_env(args : argparse):
+    """
+    specifically handles wait_for_env by continuously running the script
+    until it sees the required environment variable appear
+    """
+    global env_strings
+
+    timeout_reached = 0
+    wait_list = args.wait_for_env.copy()
+    # Set arg so that we don't recurse
+    args.wait_for_env = []
+
+    ret = are_nodes_missing(wait_list, env_strings)
+    while ret:
+        # Check we're still within our timeout
+        timeout_reached = handle_timeout(args)
+        if timeout_reached != 0:
+            break
+
+        init_globals()
+        scan_read_and_associate_devices_with_configs(args)
+        ret = are_nodes_missing(wait_list, env_strings)
+
+    if timeout_reached == errno.ETIMEDOUT:
+        print("Error. Timed out.", file=sys.stderr)
+        return errno.ETIMEDOUT
+
+
+def handle_timeout(args):
+    """
+    Checks for timeout
+    """
+    global TIMEOUT_COUNTER
+
+    max_timeout = int(args.wait_timeout)
+
+    if max_timeout > -1:
+        if TIMEOUT_COUNTER < max_timeout:
+            TIMEOUT_COUNTER = TIMEOUT_COUNTER + 1
+            time.sleep(1)
+        else:
+            return errno.ETIMEDOUT
+    return 0
+
 
 # Flat list of all USB devices discovered
 usb_devices_list = []
@@ -660,16 +744,38 @@ mappings = {}
 # Environment var name against a set of devices
 envs_dict = {}
 
-def main() -> None:
-    """
-    Entry point
-    """
-    parser = init_argparse()
-    args = parser.parse_args()
+# list of generated environemnt strings
+env_strings = []
 
-    # Read config
-    read_configuration()
+# Default timeout for device nodes
+WAIT_TIMEOUT_DEFAULT = 10
 
+# counter for timingout
+TIMEOUT_COUNTER = int(0)
+
+
+def init_globals():
+    """
+    init globals to be empty
+    """
+    global usb_devices_list
+    global port_labels
+    global segments
+    global mappings
+    global envs_dict
+
+    usb_devices_list = []
+    port_labels = {}
+    segments = []
+    mappings = {}
+    envs_dict = {}
+
+
+def handle_args_path_type(args):
+    """
+    Handles the type of path we need to use for looking up 
+    devices and ports based on the provided label
+    """
     # Limit by label instead of port path
     if args.label is not None:
         port_path = mappings.get(args.label)
@@ -678,6 +784,21 @@ def main() -> None:
                 args.port_path = port_path["port"]
             if "idpath" in port_path:
                 args.id_path = port_path["idpath"]
+
+    return args
+
+
+def scan_read_and_associate_devices_with_configs(args) -> list:
+    """
+    This function runs the meat of the script and exists to allow
+    us to re-run the script if we're waiting for a devnode to come up
+    """
+    ret = 0
+
+    # Read config
+    read_configuration()
+
+    args = handle_args_path_type(args)
 
     # Scan for devices and construct a tree
     scan_usb_tree(args)
@@ -701,9 +822,34 @@ def main() -> None:
             if device.parent is None:
                 show(device, "", args)
 
-    if args.extract_env is True:
+    if args.extract_env is True or args.wait_for_env is not None:
         if len(envs_dict) > 0:
-            generate_and_print_env_strings()
+            generate_env_strings()
+        if args.wait_for_env is not None:
+            if len(args.wait_for_env) > 0:
+                ret = wait_for_env(args)
+
+    return ret
+
+
+def main() -> None:
+    """
+    Entry point
+    """
+    parser = init_argparse()
+    args = parser.parse_args()
+
+    # Set default if not passed in
+    if args.wait_timeout is None:
+        args.wait_timeout = WAIT_TIMEOUT_DEFAULT
+
+    ret = scan_read_and_associate_devices_with_configs(args)
+
+    if ret == errno.ETIMEDOUT:
+        sys.exit(errno.ETIMEDOUT)
+
+    for e_s in env_strings:
+        print(f"{e_s}", end=" ")
 
 
 if __name__ == "__main__":
