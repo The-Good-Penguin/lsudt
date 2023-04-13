@@ -638,7 +638,7 @@ def generate_and_print_env_strings():
         for env in envs_dict[id]:
                 counter = 0
                 for dev in envs_dict[id][env]:
-                    strings += (f"{label}_{env}{counter}={dev} ")
+                    strings += (f"{label}_{env}_{counter}={dev} ")
                     counter+=1
 
     print(strings)

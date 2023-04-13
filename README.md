@@ -212,12 +212,12 @@ Using the above raspberry pi example
 This will generate a string in the form of `RASPBERRY_PI_UART0=/dev/foo`. This is based on the top 
 level identifier *(raspberry_pi)* which is capitalised and, if necessary, converts '-' and ' ' to '_'. 
 The `env` label given in env. The final number is the to differentiate several devices on the same hub
-e.g. /dev/sda /dev/sda1 /dev/sda2 will produce *_DISK0, *_DISK1, *_DISK2 respectively. 
+e.g. /dev/sda /dev/sda1 /dev/sda2 will produce *_DISK_0, *_DISK_1, *_DISK_2 respectively. 
 
 This name/value string can then be parsed however the user sees fit. For example:
 ``` bash
 $ eval `lsudt -x -b raspberry_pi`
-$ minicom -D ${RASPBERRY_PI_UART0}
+$ minicom -D ${RASPBERRY_PI_UART_0}
 ```
 
 _Options_ may also be applied to the env part of a yml. For example:
@@ -241,10 +241,10 @@ $ ls /dev/sda*
 the provided strings will _always_ be in order:
 ```bash
 $ lsudt -x -b my_device
-   MY_DEVICE_DISK0=/dev/sda
-   MY_DEVICE_DISK1=/dev/sda1
-   MY_DEVICE_DISK2=/dev/sda2
-   MY_DEVICE_DISK3=/dev/sdb
+   MY_DEVICE_DISK_0=/dev/sda
+   MY_DEVICE_DISK_1=/dev/sda1
+   MY_DEVICE_DISK_2=/dev/sda2
+   MY_DEVICE_DISK_3=/dev/sdb
 ```
 
 ## Segments
