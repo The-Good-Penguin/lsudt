@@ -271,8 +271,10 @@ def parse_one_configuration_file(path: str):
                 for mapping in i["mappings"]:
                     if mapping.get("identifier") is not None:
                         if mapping.get("port") is not None:
-                            mappings[mapping["identifier"]] = {"port": mapping["port"]}
-                        elif mapping.get("idpath") is not None:
+                            mappings[mapping["identifier"]] = {
+                                "port": mapping["port"]
+                            }
+                        if mapping.get("idpath") is not None:
                             mappings[mapping["identifier"]] = {
                                 "idpath": mapping["idpath"]
                             }
@@ -327,13 +329,10 @@ def load_port_labels():
             continue
 
         port_paths = []
-        accessor = ""
         if "idpath" in root_path:
             port_paths = determine_root_ports_from_id_path(root_path["idpath"])
-            accessor = "idpath"
         elif "port" in root_path:
             port_paths = [root_path["port"]]
-            accessor = "port"
 
         for port_path in port_paths:
             # Add port label for the segment
@@ -344,7 +343,7 @@ def load_port_labels():
             # Add port labels and envs for the ports
             for port in segment["ports"]:
                 if port.get("port") is not None and port.get("label") is not None:
-                    full_port_path = f"{root_path[accessor]}.{port['port']}"
+                    full_port_path = f"{port_path}.{port['port']}"
                     port_labels[full_port_path] = {}
                     if port.get("label") is not None:
                         port_labels[full_port_path]["label"] = port["label"]
@@ -444,18 +443,7 @@ def print_devices_of_port(device, devname, args, space) -> bool:
             space_added = True
     return space_added
 
-def build_env_dict(devname, port_path):
-    """
-    This function builds env_dict for printing
-    """
-    global envs_dict
-
-    env = None
-    options = ""
-    identifier = ""
-    accessor = ""
-    env_path = port_path
-
+def determine_device_from_port_path(port_path : str):
     for id in mappings:
         if "port" in mappings[id]:
             accessor = "port"
@@ -464,22 +452,36 @@ def build_env_dict(devname, port_path):
 
         to_compare = mappings[id][accessor]
         root_ports = determine_root_ports_from_id_path(to_compare)
-        if len(root_ports) == 1:
+        if len(root_ports) > 0:
            to_compare =  root_ports[0]
 
         if to_compare in port_path:
-            env_path = mappings[id][accessor]
-            identifier = id
-            break
+            return id
 
+def determine_env_name_and_options(port_path : str):
     for path in port_labels:
-        if env_path in path:
+        if port_path in path:
             if "env" in port_labels[path]:
                 env = port_labels[path]["env"].split(',')
                 if len(env) == 2:
-                    env,options = env[0],env[1]
+                    return env[0],env[1]
                 else:
-                    env = env[0]
+                    return env[0],""
+
+    return None,None
+
+def build_env_dict(devname, port_path):
+    """
+    This function builds env_dict for printing
+    """
+    global envs_dict
+    env = None
+    options = ""
+    identifier = ""
+    env_path = port_path
+
+    identifier = determine_device_from_port_path(port_path=port_path)
+    env,options = determine_env_name_and_options(port_path=port_path)
 
     if env is None:
         return
@@ -488,10 +490,10 @@ def build_env_dict(devname, port_path):
         if not envs_dict.get(identifier):
             envs_dict[identifier] = {env : list()}
         if not envs_dict[identifier].get(env):
-            envs_dict[identifier] = {env : list()}
+            envs_dict[identifier][env] = list()
 
         # Check for device prefix
-        if options is not None:
+        if options != "":
             basename = devname.split('/')[-1]
             if basename[0:len(options)] == options:
                 envs_dict[identifier][env] = add_uniq(envs_dict[identifier][env], devname)
@@ -519,10 +521,10 @@ def show(usb_device, space, args) -> None:
         if not args.extract_env:
             space_added = print_devices_of_port(device, devname, args, space)
         else:
-            build_env_dict(devname, usb_device.port_path)
-
-        if f"{usb_device.port_path}.0" in port_labels:
-            build_env_dict(devname, f"{usb_device.port_path}.0")
+            if f"{usb_device.port_path}.0" in port_labels:
+                build_env_dict(devname, f"{usb_device.port_path}.0")
+            else:
+                build_env_dict(devname, usb_device.port_path)
 
     if len(usb_device.children) != 0:
         showtree(usb_device.children, space + "    ", args)
