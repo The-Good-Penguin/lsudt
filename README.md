@@ -209,7 +209,7 @@ Using the above raspberry pi example
         env: UART
 ```
 
-This will generate a string in the form of `RASPBERRY_PI_UART0=/dev/foo`. This is based on the top 
+This will generate a string in the form of `RASPBERRY_PI_UART_0=/dev/foo`. This is based on the top 
 level identifier *(raspberry_pi)* which is capitalised and, if necessary, converts '-' and ' ' to '_'. 
 The `env` label given in env. The final number is the to differentiate several devices on the same hub
 e.g. /dev/sda /dev/sda1 /dev/sda2 will produce *_DISK_0, *_DISK_1, *_DISK_2 respectively. 
@@ -281,6 +281,27 @@ Port 2: Hub used for Raspberry Pi (45b:209 / 1-10.2)
         Port 4: Hub built in Ethernet (connected to Pi) (bda:8152 / 1-10.2.4.4)
            Net: enx00e04c360033
 
+```
+
+## Waiting For Devices
+
+If you have a device that might take a moment or two to come up (block devices for example) the script can be told to 
+hold off outputting all of the name=value pairs until the requested name is present. This can be done using the `--wait-for-env`/`-w` flag. This flag accepts a list of values e.g. `-w FIRST_NAME SECOND_NAME` etc
+
+Using our raspberry-pi example above if we wanted to wait for its UART to come up we would type:
+``` Bash
+$ lsudt -x -i pci-0000:00:14.0-usb-0:5 -w RASPBERRY_PI_UART_0 
+```
+  
+And this would stop the anything from being printed to stdout before `RASPBERRY_PI_UART_0` is generated. We can also ask for multiple envs to be present and it will wait until all are present before printing:
+``` Bash
+$ lsudt -x -i pci-0000:00:14.0-usb-0:5 -w RASPBERRY_PI_UART_0 RASPBERRY_PI_POWER_0
+```
+
+By default the script will try 10 times (once a second). If you wish to CHANGE this then:
+``` Bash
+$ lsudt -x -i pci-0000:00:14.0-usb-0:5 -w RASPBERRY_PI_UART_0 -o -1 # Never stop trying
+$ lsudt -x -i pci-0000:00:14.0-usb-0:5 -w RASPBERRY_PI_UART_0 -o 99 # try 99 times/for 99 seconds
 ```
 
 ## Contributing
